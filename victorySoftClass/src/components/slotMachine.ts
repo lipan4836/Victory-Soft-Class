@@ -19,7 +19,22 @@ export class SlotMachine extends Container {
 
   private createReels() {
     for (let i = 0; i < this.reelCount; i += 1) {
-      const reel = new Reel
+      const reel = new Reel(
+        i,
+        this.symbolSize,
+        this.visibleSymbols,
+        this.reelCount,
+        this.onReelStop
+      )
+    }
+  }
+
+  private onReelStop() {
+    const allStoped = this.reels.every((reel) => !reel.isSpinning)
+
+    if(allStoped) {
+      this.isSpinning = false
+      // показать результат
     }
   }
 }
@@ -29,7 +44,7 @@ class Reel extends Container {
   private symbolSize: number
   private visibleSymbols: number
   private reelIndex: number
-  private isSpinning = false
+  // public isSpinning = false
   private speenSpeed = 0
   private spinTime = 0
   private spinDuration = 0
@@ -75,5 +90,9 @@ class Reel extends Container {
     sprite.x = this.symbolSize / 2
 
     return sprite
+  }
+
+  public get isSpinning(): boolean {
+    return this.isSpinning
   }
 }
