@@ -85,6 +85,7 @@ export class SlotMachine extends Container {
         config: this.config.reelConfig,
       });
       reel.x = i * (this.config.symbolSize + 10);
+      reel.y = 0;
       this.addChild(reel);
       this.reels.push(reel);
     }
@@ -182,18 +183,38 @@ class Reel extends Container {
       ...params.config,
     };
     this.createSymbols();
+    this.alignSymbols();
     if (this.config.debug) this.setupDebugVisualization();
   }
 
   private createSymbols() {
     const totalSymbols = this.params.visibleSymbols + 4;
+    const initialOffset = -this.params.symbolSize / 2;
 
     for (let i = -2; i < totalSymbols - 2; i++) {
       const symbol = this.createRandomSymbol();
-      symbol.y = i * this.params.symbolSize;
+      symbol.y = i * this.params.symbolSize + initialOffset;
       this.symbols.push(symbol);
       this.addChild(symbol);
     }
+
+    this.currentPosition = initialOffset;
+  }
+
+  private alignSymbols() {
+    const maxPos = this.symbols.length * this.params.symbolSize;
+    const targetY =
+      Math.round(this.currentPosition / this.params.symbolSize) *
+      this.params.symbolSize;
+
+    for (let i = 0; i < this.symbols.length; i++) {
+      const symbol = this.symbols[i];
+      symbol.y =
+        ((i * this.params.symbolSize + targetY) % maxPos) -
+        this.params.symbolSize;
+    }
+
+    this.currentPosition = targetY;
   }
 
   private createRandomSymbol(): SymbolSprite {
@@ -284,6 +305,7 @@ class Reel extends Container {
       onComplete: () => {
         this._isSpinning = false;
         this.currentPosition = finalPosition;
+        this.alignSymbols();
         this.updateSymbols();
         this.updateHiddenSymbols();
         this.params.onStop();
