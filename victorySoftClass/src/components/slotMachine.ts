@@ -251,7 +251,7 @@ class Reel extends Container {
 
     this._isSpinning = true;
     this.spinTime = 0;
-    this.spinSpeed = 5 + Math.random() * 5;
+    this.spinSpeed = 15 + Math.random() * 5;
     this.spinDuration = 2000 + Math.random() * 3000;
 
     this.app.ticker.add(this.updateBound);
@@ -260,13 +260,20 @@ class Reel extends Container {
   public getCenterSymbol(): SymbolName {
     const centerY = (this.visibleSymbols * this.symbolSize) / 2;
 
+    let closestSymbol: SymbolSprite | null = null;
+    let minDistance = Infinity;
+
     for (const symbol of this.symbols) {
-      if (Math.abs(symbol.y - centerY) < this.symbolSize / 2) {
-        return symbol.label;
+      const symbolCenterY = symbol.y + this.symbolSize / 2;
+      const distance = Math.abs(symbolCenterY - centerY);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestSymbol = symbol;
       }
     }
 
-    return SYMBOL_NAMES[0];
+    return closestSymbol?.label ?? SYMBOL_NAMES[0];
   }
 
   public get isSpinning(): boolean {
