@@ -275,28 +275,22 @@ class Reel extends Container {
     this._isSpinning = true;
     gsap.killTweensOf(this);
 
-    // Более вариативное количество символов для прокрутки
-    const baseSpinSymbols = 30 + this.params.index * 8;
-    const randomSpinSymbols = Math.floor(Math.random() * 30);
-    const totalSpinSymbols = baseSpinSymbols + randomSpinSymbols;
+    const spinDuration = this.config.spinDuration;
+    const speedFactor = 0.8 + Math.random() * 0.7;
+    
+    const targetSymbolIndex = Math.floor(Math.random() * SYMBOL_NAMES.length);
+    const targetPosition = targetSymbolIndex * this.params.symbolSize;
+    
+    const baseDistance = this.config.spinSpeed * spinDuration * speedFactor;
+    const fullRotations = 5;
+    const totalDistance = baseDistance + fullRotations * SYMBOL_NAMES.length * this.params.symbolSize;
+    
+    const overshootDistance = this.config.overshoot * this.params.symbolSize;
 
-    // Разная скорость для каждого барабана с большей вариативностью
-    const speedFactor = 0.8 + Math.random() * 0.5;
-    const duration = this.config.spinDuration * speedFactor;
-
-    // Случайное смещение финальной позиции
-    const positionOffset = Math.floor(Math.random() * this.params.symbolSize);
-    const finalPosition =
-      positionOffset +
-      Math.floor(Math.random() * SYMBOL_NAMES.length) * this.params.symbolSize;
-
-    const overshootPosition =
-      finalPosition + this.config.overshoot * this.params.symbolSize;
-
-    // Первая фаза - быстрое вращение
+    // начало спина
     gsap.to(this, {
-      currentPosition: `+=${totalSpinSymbols * this.params.symbolSize}`,
-      duration: duration * 0.7,
+      currentPosition: `+=${totalDistance}`,
+      duration: spinDuration * 0.8,
       ease: 'power3.in',
       modifiers: {
         currentPosition: (value) => {
@@ -306,43 +300,35 @@ class Reel extends Container {
       },
       onUpdate: () => this.updateSymbols(),
       onComplete: () => {
-        // Вторая фаза - замедление
+        // остановка на выбранном символе
         gsap.to(this, {
-          currentPosition: `+=${15 * this.params.symbolSize}`,
-          duration: duration * 0.2,
-          ease: 'sine.inOut',
+          currentPosition: targetPosition + overshootDistance,
+          duration: spinDuration * 0.2,
+          ease: 'sine.out',
           onUpdate: () => this.updateSymbols(),
           onComplete: () => {
-            // Третья фаза - доводка до overshoot позиции
-            gsap.to(this, {
-              currentPosition: overshootPosition,
-              duration: duration * 0.1,
-              ease: 'power1.out',
-              onUpdate: () => this.updateSymbols(),
-              onComplete: () => {
-                this.finalizeStop(finalPosition);
-              },
-            });
-          },
+            // отскок
+            this.applyBounceEffect(targetPosition);
+          }
         });
       },
     });
   }
 
-  private finalizeStop(finalPosition: number) {
+  private applyBounceEffect(targetPosition: number) {
     gsap.to(this, {
-      currentPosition: finalPosition,
-      duration: 0.4,
+      currentPosition: targetPosition,
+      duration: 0.5,
       ease: `back.out(${this.config.bounceStrength})`,
       onUpdate: () => this.updateSymbols(),
       onComplete: () => {
         this._isSpinning = false;
-        this.currentPosition = finalPosition;
+        this.currentPosition = targetPosition;
         this.alignSymbols();
         this.updateSymbols();
         this.updateHiddenSymbols();
         this.params.onStop();
-      },
+      }
     });
   }
 

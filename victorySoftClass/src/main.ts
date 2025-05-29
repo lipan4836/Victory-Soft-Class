@@ -18,10 +18,10 @@ async function initApp() {
     visibleSymbols: 3,
     reelConfig: {
       spinDuration: 3,
-      overshoot: 1.2,
+      overshoot: 0.3,
       bounceStrength: 0.5,
       debug: true,
-      spinSpeed: 20,
+      spinSpeed: 15,
     },
   });
   app.stage.addChild(slotMachine);
