@@ -138,13 +138,50 @@ export class SlotMachine extends Container {
     this.addChild(buttonContainer);
   }
 
-  private startSpin() {
+  private async startSpin() {
     if (this.isSpinning) return;
-    this.isSpinning = true;
 
-    this.reels.forEach((reel, index) => {
-      setTimeout(() => reel.spin(), index * 150);
-    });
+    try {
+      this.isSpinning = true;
+
+      const spinDuration = await this.fetchSpinDuration();
+
+      this.reels.forEach((reel) => {
+        reel.updateConfig({ spinDuration });
+      });
+
+      this.reels.forEach((reel, index) => {
+        setTimeout(() => reel.spin(), index * 150);
+      });
+    } catch (error) {
+      console.error('Failed to start spin:', error);
+      this.isSpinning = false;
+    }
+  }
+
+  private async fetchSpinDuration(): Promise<number> {
+    try {
+      const response = await fetch('http://victory-soft-p1.infy.uk/delay', {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        // mode: 'no-cors'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Response error, status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.delay;
+    } catch (error) {
+      console.error(
+        'Failed to fetch spin duration, using default value:',
+        error
+      );
+      return this.config.reelConfig.spinDuration;
+    }
   }
 
   private onReelStop() {
@@ -277,14 +314,16 @@ class Reel extends Container {
 
     const spinDuration = this.config.spinDuration;
     const speedFactor = 0.8 + Math.random() * 0.7;
-    
+
     const targetSymbolIndex = Math.floor(Math.random() * SYMBOL_NAMES.length);
     const targetPosition = targetSymbolIndex * this.params.symbolSize;
-    
+
     const baseDistance = this.config.spinSpeed * spinDuration * speedFactor;
     const fullRotations = 5;
-    const totalDistance = baseDistance + fullRotations * SYMBOL_NAMES.length * this.params.symbolSize;
-    
+    const totalDistance =
+      baseDistance +
+      fullRotations * SYMBOL_NAMES.length * this.params.symbolSize;
+
     const overshootDistance = this.config.overshoot * this.params.symbolSize;
 
     // начало спина
@@ -309,7 +348,7 @@ class Reel extends Container {
           onComplete: () => {
             // отскок
             this.applyBounceEffect(targetPosition);
-          }
+          },
         });
       },
     });
@@ -328,7 +367,7 @@ class Reel extends Container {
         this.updateSymbols();
         this.updateHiddenSymbols();
         this.params.onStop();
-      }
+      },
     });
   }
 
@@ -389,6 +428,13 @@ class Reel extends Container {
     );
 
     return visibleSymbols[0]?.label ?? SYMBOL_NAMES[0];
+  }
+
+  public updateConfig(newConfig: Partial<ReelConfig>) {
+    this.config = {
+      ...this.config,
+      ...newConfig,
+    };
   }
 
   public get isSpinning(): boolean {
