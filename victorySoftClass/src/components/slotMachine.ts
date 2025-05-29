@@ -6,48 +6,85 @@ import {
   Assets,
   Text,
   Graphics,
-  Ticker,
 } from 'pixi.js';
 import { SYMBOL_NAMES, type SymbolName } from '../assets/symbols';
+import { gsap } from 'gsap';
 
 interface SymbolSprite extends Sprite {
   label: SymbolName;
 }
+
+interface ReelConfig {
+  spinDuration: number;
+  spinSpeed: number;
+  overshoot: number;
+  bounceStrength: number;
+  debug: boolean;
+}
+
+interface SlotMachineConfig {
+  symbolSize: number;
+  reelCount: number;
+  visibleSymbols: number;
+  reelConfig: ReelConfig;
+}
+
+const DEFAULT_REEL_CONFIG: ReelConfig = {
+  spinDuration: 2.5,
+  spinSpeed: 15,
+  overshoot: 0.8,
+  bounceStrength: 1.2,
+  debug: false,
+};
+
+const DEFAULT_SLOT_CONFIG: SlotMachineConfig = {
+  symbolSize: 100,
+  reelCount: 5,
+  visibleSymbols: 3,
+  reelConfig: DEFAULT_REEL_CONFIG,
+};
 
 export class SlotMachine extends Container {
   private reels: Reel[] = [];
   private spinButton!: Graphics;
   private app: Application;
   private isSpinning = false;
-  private symbolSize = 100;
-  private reelCount = 5;
-  private visibleSymbols = 3;
+  private config: Required<SlotMachineConfig>;
 
-  constructor(app: Application) {
+  constructor(app: Application, config?: SlotMachineConfig) {
     super();
     this.app = app;
+    this.config = {
+      ...DEFAULT_SLOT_CONFIG,
+      ...config,
+      reelConfig: {
+        ...DEFAULT_REEL_CONFIG,
+        ...config?.reelConfig,
+      },
+    };
+
     this.createReels();
     this.createSpinButton();
     this.position.set(app.screen.width / 2, app.screen.height / 2);
     this.pivot.set(
-      (this.reelCount * (this.symbolSize + 10)) / 2,
-      (this.visibleSymbols * this.symbolSize) / 2
+      (this.config.reelCount * (this.config.symbolSize + 10)) / 2,
+      (this.config.visibleSymbols * this.config.symbolSize) / 2
     );
   }
 
   private async createReels() {
     await this.preloadTextures();
 
-    for (let i = 0; i < this.reelCount; i++) {
-      const reel = new Reel(
-        i,
-        this.symbolSize,
-        this.visibleSymbols,
-        this.reelCount,
-        this.onReelStop.bind(this),
-        this.app
-      );
-      reel.x = i * (this.symbolSize + 10);
+    for (let i = 0; i < this.config.reelCount; i++) {
+      const reel = new Reel({
+        index: i,
+        symbolSize: this.config.symbolSize,
+        visibleSymbols: this.config.visibleSymbols,
+        onStop: this.onReelStop.bind(this),
+        app: this.app,
+        config: this.config.reelConfig,
+      });
+      reel.x = i * (this.config.symbolSize + 10);
       this.addChild(reel);
       this.reels.push(reel);
     }
@@ -61,7 +98,6 @@ export class SlotMachine extends Container {
       }, {} as Record<SymbolName, string>);
 
       Assets.addBundle('slotSymbols', texturePaths);
-
       await Assets.loadBundle('slotSymbols');
     } catch (error) {
       console.error('Failed to load textures:', error);
@@ -71,9 +107,11 @@ export class SlotMachine extends Container {
 
   private createSpinButton() {
     const buttonContainer = new Container();
+    const buttonWidth = 150;
+    const buttonHeight = 60;
 
     this.spinButton = new Graphics()
-      .roundRect(0, 0, 150, 60, 15)
+      .roundRect(0, 0, buttonWidth, buttonHeight, 15)
       .fill(0x3a7bd5);
 
     const buttonText = new Text({
@@ -85,14 +123,12 @@ export class SlotMachine extends Container {
       },
     });
     buttonText.anchor.set(0.5);
-    buttonText.position.set(75, 30);
+    buttonText.position.set(buttonWidth / 2, buttonHeight / 2);
 
-    buttonContainer.addChild(this.spinButton);
-    buttonContainer.addChild(buttonText);
-
+    buttonContainer.addChild(this.spinButton, buttonText);
     buttonContainer.position.set(
-      (this.reelCount * (this.symbolSize + 10) - 150) / 2,
-      this.visibleSymbols * this.symbolSize + 30
+      (this.config.reelCount * (this.config.symbolSize + 10) - buttonWidth) / 2,
+      this.config.visibleSymbols * this.config.symbolSize + 30
     );
     buttonContainer.eventMode = 'static';
     buttonContainer.cursor = 'pointer';
@@ -106,15 +142,12 @@ export class SlotMachine extends Container {
     this.isSpinning = true;
 
     this.reels.forEach((reel, index) => {
-      setTimeout(() => {
-        reel.spin();
-      }, index * 100);
+      setTimeout(() => reel.spin(), index * 150);
     });
   }
 
   private onReelStop() {
-    const allStopped = this.reels.every((reel) => !reel.isSpinning);
-    if (allStopped) {
+    if (this.reels.every((reel) => !reel.isSpinning)) {
       this.isSpinning = false;
       this.showResult();
     }
@@ -122,48 +155,42 @@ export class SlotMachine extends Container {
 
   private showResult() {
     const result = this.reels.map((reel) => reel.getCenterSymbol());
-    console.log('Result:', result);
+    console.log('Slot Result:', result);
   }
 }
 
 class Reel extends Container {
   private symbols: SymbolSprite[] = [];
-  private symbolSize: number;
-  private visibleSymbols: number;
-  private reelIndex: number;
   private _isSpinning = false;
-  private spinSpeed = 0;
-  private spinTime = 0;
-  private spinDuration = 0;
-  private onStopCallback: () => void;
   private currentPosition = 0;
-  private app: Application;
-  private updateBound: (ticker: Ticker) => void;
+  private config: Required<ReelConfig>;
+  private debugGraphics?: Graphics;
 
   constructor(
-    index: number,
-    symbolSize: number,
-    visibleSymbols: number,
-    reelCount: number,
-    onStop: () => void,
-    app: Application
+    private params: {
+      index: number;
+      symbolSize: number;
+      visibleSymbols: number;
+      onStop: () => void;
+      app: Application;
+      config?: Partial<ReelConfig>;
+    }
   ) {
     super();
-    this.reelIndex = index;
-    this.symbolSize = symbolSize;
-    this.visibleSymbols = visibleSymbols;
-    this.onStopCallback = onStop;
-    this.app = app;
-    this.updateBound = this.update.bind(this);
+    this.config = {
+      ...DEFAULT_REEL_CONFIG,
+      ...params.config,
+    };
     this.createSymbols();
+    if (this.config.debug) this.setupDebugVisualization();
   }
 
   private createSymbols() {
-    const totalSymbols = this.visibleSymbols + 2;
+    const totalSymbols = this.params.visibleSymbols + 4;
 
-    for (let i = 0; i < totalSymbols; i++) {
+    for (let i = -2; i < totalSymbols - 2; i++) {
       const symbol = this.createRandomSymbol();
-      symbol.y = i * this.symbolSize;
+      symbol.y = i * this.params.symbolSize;
       this.symbols.push(symbol);
       this.addChild(symbol);
     }
@@ -175,105 +202,152 @@ class Reel extends Container {
     const texture = Texture.from(`/png/${symbolLabel}.png`);
 
     const sprite = new Sprite(texture) as SymbolSprite;
-    sprite.width = this.symbolSize;
-    sprite.height = this.symbolSize;
+    sprite.width = this.params.symbolSize;
+    sprite.height = this.params.symbolSize;
     sprite.anchor.set(0.5);
-    sprite.x = this.symbolSize / 2;
+    sprite.x = this.params.symbolSize / 2;
     sprite.label = symbolLabel;
 
     return sprite;
   }
 
-  private update(ticker: Ticker) {
-    if (!this._isSpinning) return;
+  private setupDebugVisualization() {
+    this.debugGraphics = new Graphics();
+    this.addChild(this.debugGraphics);
 
-    this.spinTime += ticker.deltaMS;
+    // Центральная линия
+    this.debugGraphics
+      .setStrokeStyle({
+        width: 2,
+        color: 0xff0000,
+      })
+      .moveTo(0, (this.params.visibleSymbols * this.params.symbolSize) / 2)
+      .lineTo(
+        this.params.symbolSize,
+        (this.params.visibleSymbols * this.params.symbolSize) / 2
+      )
+      .stroke();
 
-    const progress = Math.min(this.spinTime / this.spinDuration, 1);
-    const currentSpeed = this.spinSpeed * (1 - progress * 0.9);
-
-    this.currentPosition += currentSpeed;
-
-    for (let i = 0; i < this.symbols.length; i++) {
-      const symbol = this.symbols[i];
-      symbol.y =
-        ((i * this.symbolSize + this.currentPosition) %
-          (this.symbols.length * this.symbolSize)) -
-        this.symbolSize;
-    }
-
-    if (this.spinTime >= this.spinDuration) {
-      this.stop();
-    }
-  }
-
-  private stop() {
-    this._isSpinning = false;
-    this.app.ticker.remove(this.updateBound);
-
-    const targetY =
-      Math.round(this.currentPosition / this.symbolSize) * this.symbolSize;
-    this.currentPosition = targetY;
-
-    for (let i = 0; i < this.symbols.length; i++) {
-      const symbol = this.symbols[i];
-      symbol.y =
-        ((i * this.symbolSize + this.currentPosition) %
-          (this.symbols.length * this.symbolSize)) -
-        this.symbolSize;
-    }
-
-    this.updateHiddenSymbols();
-    this.onStopCallback();
-  }
-
-  private updateHiddenSymbols() {
-    for (let i = 0; i < this.symbols.length; i++) {
-      const symbol = this.symbols[i];
-      if (
-        symbol.y < -this.symbolSize ||
-        symbol.y > this.visibleSymbols * this.symbolSize
-      ) {
-        const newSymbol = this.getRandomSymbolName();
-        symbol.texture = Texture.from(`/png/${newSymbol}.png`);
-        symbol.label = newSymbol;
-      }
-    }
-  }
-
-  private getRandomSymbolName(): SymbolName {
-    const randomIndex = Math.floor(Math.random() * SYMBOL_NAMES.length);
-    return SYMBOL_NAMES[randomIndex];
+    // Границы видимой области
+    this.debugGraphics
+      .setStrokeStyle({
+        width: 1,
+        color: 0x00ff00,
+      })
+      .moveTo(0, 0)
+      .lineTo(this.params.symbolSize, 0)
+      .stroke()
+      .moveTo(0, this.params.visibleSymbols * this.params.symbolSize)
+      .lineTo(
+        this.params.symbolSize,
+        this.params.visibleSymbols * this.params.symbolSize
+      )
+      .stroke();
   }
 
   public spin() {
     if (this._isSpinning) return;
-
     this._isSpinning = true;
-    this.spinTime = 0;
-    this.spinSpeed = 15 + Math.random() * 5;
-    this.spinDuration = 2000 + Math.random() * 3000;
+    gsap.killTweensOf(this);
 
-    this.app.ticker.add(this.updateBound);
+    const spinSymbols = 30 + Math.floor(Math.random() * 20);
+    const finalPosition =
+      Math.round(this.currentPosition / this.params.symbolSize) *
+      this.params.symbolSize;
+    const targetPosition =
+      finalPosition +
+      (spinSymbols + this.config.overshoot) * this.params.symbolSize;
+
+    gsap.to(this, {
+      currentPosition: targetPosition,
+      duration: this.config.spinDuration,
+      ease: 'power3.inOut',
+      modifiers: {
+        currentPosition: (value) => {
+          const maxPos = this.symbols.length * this.params.symbolSize;
+          return ((value % maxPos) + maxPos) % maxPos;
+        },
+      },
+      onUpdate: () => this.updateSymbols(),
+      onComplete: () => {
+        this.finalizeStop(finalPosition);
+      },
+    });
+  }
+
+  private finalizeStop(finalPosition: number) {
+    gsap.to(this, {
+      currentPosition: finalPosition,
+      duration: 0.4,
+      ease: `back.out(${this.config.bounceStrength})`,
+      onUpdate: () => this.updateSymbols(),
+      onComplete: () => {
+        this._isSpinning = false;
+        this.currentPosition = finalPosition;
+        this.updateSymbols();
+        this.updateHiddenSymbols();
+        this.params.onStop();
+      },
+    });
+  }
+
+  private updateSymbols() {
+    const maxPos = this.symbols.length * this.params.symbolSize;
+    const normalizedPos = ((this.currentPosition % maxPos) + maxPos) % maxPos;
+
+    for (let i = 0; i < this.symbols.length; i++) {
+      const symbol = this.symbols[i];
+      symbol.y =
+        ((i * this.params.symbolSize + normalizedPos) % maxPos) -
+        this.params.symbolSize;
+
+      // для дебага
+      if (this.config.debug && this.debugGraphics) {
+        symbol.alpha =
+          symbol.y >= 0 &&
+          symbol.y < this.params.visibleSymbols * this.params.symbolSize
+            ? 1
+            : 0.5;
+      }
+    }
+  }
+
+  private updateHiddenSymbols() {
+    const visibleRange = this.params.visibleSymbols * this.params.symbolSize;
+
+    for (let i = 0; i < this.symbols.length; i++) {
+      const symbol = this.symbols[i];
+      const symbolBottom = symbol.y + this.params.symbolSize;
+
+      if (symbolBottom < 0 || symbol.y > visibleRange) {
+        const newSymbol =
+          SYMBOL_NAMES[Math.floor(Math.random() * SYMBOL_NAMES.length)];
+        symbol.texture = Texture.from(`/png/${newSymbol}.png`);
+        symbol.label = newSymbol;
+
+        if (symbolBottom < 0) {
+          symbol.y += this.symbols.length * this.params.symbolSize;
+        } else if (symbol.y > visibleRange) {
+          symbol.y -= this.symbols.length * this.params.symbolSize;
+        }
+      }
+    }
   }
 
   public getCenterSymbol(): SymbolName {
-    const centerY = (this.visibleSymbols * this.symbolSize) / 2;
+    const centerY = (this.params.visibleSymbols * this.params.symbolSize) / 2;
+    const visibleSymbols = this.symbols.filter(
+      (s) =>
+        s.y >= 0 && s.y < this.params.visibleSymbols * this.params.symbolSize
+    );
 
-    let closestSymbol: SymbolSprite | null = null;
-    let minDistance = Infinity;
+    visibleSymbols.sort(
+      (a, b) =>
+        Math.abs(a.y + this.params.symbolSize / 2 - centerY) -
+        Math.abs(b.y + this.params.symbolSize / 2 - centerY)
+    );
 
-    for (const symbol of this.symbols) {
-      const symbolCenterY = symbol.y + this.symbolSize / 2;
-      const distance = Math.abs(symbolCenterY - centerY);
-
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestSymbol = symbol;
-      }
-    }
-
-    return closestSymbol?.label ?? SYMBOL_NAMES[0];
+    return visibleSymbols[0]?.label ?? SYMBOL_NAMES[0];
   }
 
   public get isSpinning(): boolean {

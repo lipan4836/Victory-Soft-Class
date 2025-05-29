@@ -12,7 +12,18 @@ async function initApp() {
 
   document.body.appendChild(app.canvas);
 
-  const slotMachine = new SlotMachine(app);
+  const slotMachine = new SlotMachine(app, {
+    symbolSize: 120,
+    reelCount: 5,
+    visibleSymbols: 3,
+    reelConfig: {
+      spinDuration: 3,
+      overshoot: 1.2,
+      bounceStrength: 1.5,
+      debug: true,
+      spinSpeed: 20,
+    },
+  });
   app.stage.addChild(slotMachine);
 }
 
