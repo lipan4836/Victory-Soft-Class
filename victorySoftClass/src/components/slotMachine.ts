@@ -47,6 +47,7 @@ const DEFAULT_SLOT_CONFIG: SlotMachineConfig = {
 export class SlotMachine extends Container {
   private reels: Reel[] = [];
   private spinButton!: Graphics;
+  private spinButtonContainer!: Container;
   private app: Application;
   private isSpinning = false;
   private config: Required<SlotMachineConfig>;
@@ -108,6 +109,7 @@ export class SlotMachine extends Container {
 
   private createSpinButton() {
     const buttonContainer = new Container();
+    this.spinButtonContainer = buttonContainer;
     const buttonWidth = 150;
     const buttonHeight = 60;
 
@@ -128,8 +130,8 @@ export class SlotMachine extends Container {
 
     buttonContainer.addChild(this.spinButton, buttonText);
     buttonContainer.position.set(
-      (this.config.reelCount * (this.config.symbolSize + 10) - buttonWidth) / 2,
-      this.config.visibleSymbols * this.config.symbolSize + 30
+      (this.config.reelCount * (this.config.symbolSize + 40) - buttonWidth) / 2,
+      this.config.visibleSymbols * this.config.symbolSize + 120
     );
     buttonContainer.eventMode = 'static';
     buttonContainer.cursor = 'pointer';
@@ -161,7 +163,7 @@ export class SlotMachine extends Container {
 
   private async fetchSpinDuration(): Promise<number> {
     try {
-      const response = await fetch('http://victory-soft-p1.infy.uk/delay', {
+      const response = await fetch('http://victory-soft-p1.infy.uk/delay.php', {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -174,6 +176,7 @@ export class SlotMachine extends Container {
       }
 
       const data = await response.json();
+
       return data.delay;
     } catch (error) {
       console.error(
@@ -194,6 +197,11 @@ export class SlotMachine extends Container {
   private showResult() {
     const result = this.reels.map((reel) => reel.getCenterSymbol());
     console.log('Slot Result:', result);
+    console.log('delay:', this.config.reelConfig.spinDuration);
+  }
+
+  public getSpinButton(): Container {
+    return this.spinButtonContainer;
   }
 }
 
