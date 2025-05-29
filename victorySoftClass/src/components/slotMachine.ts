@@ -32,8 +32,8 @@ interface SlotMachineConfig {
 const DEFAULT_REEL_CONFIG: ReelConfig = {
   spinDuration: 2.5,
   spinSpeed: 15,
-  overshoot: 0.8,
-  bounceStrength: 1.2,
+  overshoot: 0.3,
+  bounceStrength: 0.8,
   debug: false,
 };
 
@@ -191,9 +191,13 @@ class Reel extends Container {
     const totalSymbols = this.params.visibleSymbols + 4;
     const initialOffset = -this.params.symbolSize / 2;
 
+    const randomStartOffset = Math.floor(
+      Math.random() * this.params.symbolSize
+    );
+
     for (let i = -2; i < totalSymbols - 2; i++) {
       const symbol = this.createRandomSymbol();
-      symbol.y = i * this.params.symbolSize + initialOffset;
+      symbol.y = i * this.params.symbolSize + initialOffset + randomStartOffset;
       this.symbols.push(symbol);
       this.addChild(symbol);
     }
@@ -271,18 +275,29 @@ class Reel extends Container {
     this._isSpinning = true;
     gsap.killTweensOf(this);
 
-    const spinSymbols = 30 + Math.floor(Math.random() * 20);
-    const finalPosition =
-      Math.round(this.currentPosition / this.params.symbolSize) *
-      this.params.symbolSize;
-    const targetPosition =
-      finalPosition +
-      (spinSymbols + this.config.overshoot) * this.params.symbolSize;
+    // Более вариативное количество символов для прокрутки
+    const baseSpinSymbols = 30 + this.params.index * 8;
+    const randomSpinSymbols = Math.floor(Math.random() * 30);
+    const totalSpinSymbols = baseSpinSymbols + randomSpinSymbols;
 
+    // Разная скорость для каждого барабана с большей вариативностью
+    const speedFactor = 0.8 + Math.random() * 0.5;
+    const duration = this.config.spinDuration * speedFactor;
+
+    // Случайное смещение финальной позиции
+    const positionOffset = Math.floor(Math.random() * this.params.symbolSize);
+    const finalPosition =
+      positionOffset +
+      Math.floor(Math.random() * SYMBOL_NAMES.length) * this.params.symbolSize;
+
+    const overshootPosition =
+      finalPosition + this.config.overshoot * this.params.symbolSize;
+
+    // Первая фаза - быстрое вращение
     gsap.to(this, {
-      currentPosition: targetPosition,
-      duration: this.config.spinDuration,
-      ease: 'power3.inOut',
+      currentPosition: `+=${totalSpinSymbols * this.params.symbolSize}`,
+      duration: duration * 0.7,
+      ease: 'power3.in',
       modifiers: {
         currentPosition: (value) => {
           const maxPos = this.symbols.length * this.params.symbolSize;
@@ -291,7 +306,25 @@ class Reel extends Container {
       },
       onUpdate: () => this.updateSymbols(),
       onComplete: () => {
-        this.finalizeStop(finalPosition);
+        // Вторая фаза - замедление
+        gsap.to(this, {
+          currentPosition: `+=${15 * this.params.symbolSize}`,
+          duration: duration * 0.2,
+          ease: 'sine.inOut',
+          onUpdate: () => this.updateSymbols(),
+          onComplete: () => {
+            // Третья фаза - доводка до overshoot позиции
+            gsap.to(this, {
+              currentPosition: overshootPosition,
+              duration: duration * 0.1,
+              ease: 'power1.out',
+              onUpdate: () => this.updateSymbols(),
+              onComplete: () => {
+                this.finalizeStop(finalPosition);
+              },
+            });
+          },
+        });
       },
     });
   }

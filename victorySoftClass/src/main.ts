@@ -19,7 +19,7 @@ async function initApp() {
     reelConfig: {
       spinDuration: 3,
       overshoot: 1.2,
-      bounceStrength: 1.5,
+      bounceStrength: 0.5,
       debug: true,
       spinSpeed: 20,
     },
