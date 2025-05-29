@@ -51,6 +51,8 @@ export class SlotMachine extends Container {
   private app: Application;
   private isSpinning = false;
   private config: Required<SlotMachineConfig>;
+  private delayDisplay!: Text;
+  private delayTimeout: number | null = null;
 
   constructor(app: Application, config?: SlotMachineConfig) {
     super();
@@ -71,6 +73,7 @@ export class SlotMachine extends Container {
       (this.config.reelCount * (this.config.symbolSize + 10)) / 2,
       (this.config.visibleSymbols * this.config.symbolSize) / 2
     );
+    this.createDelayDisplay();
   }
 
   private async createReels() {
@@ -146,6 +149,8 @@ export class SlotMachine extends Container {
     try {
       this.isSpinning = true;
 
+      this.showDelayMessage('Loading...');
+
       const spinDuration = await this.fetchSpinDuration();
 
       this.reels.forEach((reel) => {
@@ -163,12 +168,11 @@ export class SlotMachine extends Container {
 
   private async fetchSpinDuration(): Promise<number> {
     try {
-      const response = await fetch('http://victory-soft-p1.infy.uk/delay.php', {
+      const response = await fetch('http://victory-soft.infy.uk/delay.php', {
         method: 'GET',
         headers: {
           Accept: 'application/json',
         },
-        // mode: 'no-cors'
       });
 
       if (!response.ok) {
@@ -176,6 +180,8 @@ export class SlotMachine extends Container {
       }
 
       const data = await response.json();
+
+      this.showDelayMessage(`Delay: ${data.delay.toFixed(1)}s`);
 
       return data.delay;
     } catch (error) {
@@ -190,6 +196,7 @@ export class SlotMachine extends Container {
   private onReelStop() {
     if (this.reels.every((reel) => !reel.isSpinning)) {
       this.isSpinning = false;
+      this.hideDelayMessage();
       this.showResult();
     }
   }
@@ -197,7 +204,54 @@ export class SlotMachine extends Container {
   private showResult() {
     const result = this.reels.map((reel) => reel.getCenterSymbol());
     console.log('Slot Result:', result);
-    console.log('delay:', this.config.reelConfig.spinDuration);
+  }
+
+  private createDelayDisplay() {
+    if (this.delayDisplay) return;
+
+    this.delayDisplay = new Text({
+      text: '',
+      style: {
+        fill: 0xffffff,
+        fontSize: 28,
+        fontWeight: 'bold',
+        fontFamily: 'Arial',
+        dropShadow: {
+          color: 0x000000,
+          distance: 3,
+          blur: 5,
+          alpha: 0.8,
+        },
+      },
+    });
+
+    this.delayDisplay.anchor.set(0.5);
+    this.delayDisplay.position.set(
+      this.app.screen.width / 2,
+      50
+    );
+
+    this.app.stage.addChild(this.delayDisplay);
+    this.delayDisplay.visible = false;
+  }
+
+  private showDelayMessage(message: string) {
+    if (!this.delayDisplay) {
+      this.createDelayDisplay();
+    }
+
+    this.delayDisplay.text = message;
+    this.delayDisplay.visible = true;
+  }
+
+  private hideDelayMessage() {
+    if (this.delayDisplay) {
+      this.delayDisplay.visible = false;
+    }
+    if (this.delayTimeout) {
+      clearTimeout(this.delayTimeout);
+      this.delayTimeout = null;
+    }
   }
 
   public getSpinButton(): Container {
